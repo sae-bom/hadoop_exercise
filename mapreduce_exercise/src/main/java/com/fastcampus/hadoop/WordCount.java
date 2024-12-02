@@ -4,27 +4,43 @@ import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 import java.io.IOException;
 import java.util.StringTokenizer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class WordCount extends Configured implements Tool {
+    static enum Word {
+        WITHOUT_SPECIAL_CHARACTER,
+        WITH_SPECIAL_CHARACTER
+    }
+
     public static class TokenizerMapper extends Mapper<Object, Text, Text, IntWritable> {
         private Text word = new Text();
         private IntWritable one = new IntWritable(1);
+        private Pattern pattern = Pattern.compile("[^a-z0-9 ]", Pattern.CASE_INSENSITIVE);
 
         @Override
         protected void map(Object key, Text value, Context context) throws IOException, InterruptedException {
             StringTokenizer itr = new StringTokenizer(value.toString());
             while (itr.hasMoreTokens()) {
-                word.set(itr.nextToken().toLowerCase());
+                String str = itr.nextToken().toLowerCase();
+                Matcher matcher = pattern.matcher(str);
+                if (matcher.find()) {
+                    context.getCounter(Word.WITH_SPECIAL_CHARACTER).increment(1);
+                } else {
+                    context.getCounter(Word.WITHOUT_SPECIAL_CHARACTER).increment(1);
+                }
+
+                word.set(str);
                 context.write(word, one);
             }
         }
@@ -50,8 +66,8 @@ public class WordCount extends Configured implements Tool {
 
         job.setJarByClass(WordCount.class);
 
-        job.setMapperClass(TokenizerMapper.class);
-        job.setReducerClass(IntSumReducer.class);
+        job.setMapperClass(WordCount.TokenizerMapper.class);
+        job.setReducerClass(WordCount.IntSumReducer.class);
 
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
